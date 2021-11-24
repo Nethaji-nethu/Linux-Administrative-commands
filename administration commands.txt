@@ -1,0 +1,654 @@
+swap management
+---------------
+
+free -m -- RAM and SWAP in megabytes
+free -h -- RAM and SWAP in human readable size(Gigabytes or megabytes)
+swapon -s -- show the swap memory
+dd if=/dev/zero of=/swapfile bs=1M count=1024 -- disk to disk , "if" input file, "of" output file, "bs" blocksize (used to create files with size)
+mkswap /swapfile -- format the file to be swap
+mkswap /dev/partition5 -- format the partition to be swap
+swapon -a /swapfile -- activate the swap file
+swapon -a /dev/partition5 -- activate the swap partition
+swapoff /swapfile -- remove file from using it as swap mem
+swapoff /dev/partition5 -- remove partition from using it as swap partition
+fstab entries
+-------------
+# swapon --show=NAME,UUID
+/swapfile	swap 	swap 	defaults	0 	0
+
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+process management
+------------------
+
+ps -- dispay current console processes
+prep -- finds process id of a process
+pkill -- to kill process with process name
+kill -- to kill the process wit process id
+fg -- to foreground the background process
+jobs -- to display the background processes
+bg -- to make the process as background process
+nice -- to start a start a process with desired nice value
+top -- display all processes with cpu load average and memory
+
+process states
+--------------
+0 -- running 
+S -- sleeping (waiting for an event to complete)
+R -- runnable (process is on queue)
+T -- traced (Stopped)
+
+Kill Signals
+------------
+1 -- Hang up (the controlling terminal has been disconnected)
+2 -- interrupt (ctrl+c)
+3 -- quit the process
+6 -- abort
+9 -- kill (SIGKILL issued directly by kernal) (kill -9 pid)
+19 -- SIGTERM issued by user (kill pid)
+
+ps command
+----------
+-A -- all processes information
+-a -- frequestly requested processes info
+-e -- everyprocess on the system
+-f -- full listing
+-l -- long listing
+-u -- pertaining to particular user
+-g -- pertaining to group
+
+jobs 
+jobs -l
+bg %% -- %% means current job
+bg %1 -- jobid (obtained by jobs command)
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+Disk management
+---------------
+fdisk -l --> available disks and disk partitions
+fdisk /dev/sda --> patiotion the disk /dev/sda
+partx -a /dev/sda --> update the patition table to kernal (partprobe /dev/sda)
+mkfs.ext4 /dev/sda3 --> format the partition into desired fs type (xfs,ext2,ext3, etc...)
+mkdir /mountpnt --> create a mount point
+mount /dev/sda3 /mountpnt --> mount the disk on mountpoint
+mount -o ro /dev/sda3 /mountpnt --> readonly option
+lsblk -f --> show the disks/partitions tree with UUIDs either mounted/unmounted
+blkid --> show the disks/partitions with fs type and UUIDs either mounted/unmounted
+
+fstab entry
+-----------
+/dev/sda3	/mountpnt 	etx4 	defaults	0 	0
+#partition 	mountpoint	fs-type	mount-options/permissions(rw,ro)	fs-dump-value(1,0)	fsckpass-number(1,2,0)
+
+df -hT --> to c the mounted fs with fs type and size in human readable format
+umount /mountpnt --> to unmount the partition
+mount --> to c the mounted fs with mount permissions/ mount options
+mountpoint /mountpnt --> to check whether or not /mountpnt is a mountpoint
+
+To migrate from ext3 to ext4 directly without backup
+----------------------------------------------------
+umount /mountpnt
+tune2fs -O dir_index,extents,uninit_bg /dev/sda3
+e2fsck /dev/sda3 --> to check the consistency of a fs and to repair the fs errors
+mount /dev/sda3 /mountpnt
+
+fstab entry
+-----------
+# change the fs-type to ext4
+
+umount -a
+mount -a
+fuser -cu /mountpnt --> to check the users currently using that fs
+fuser -ck /mountpnt --> to knockout all users from fs
+e2label /dev/sda3 /ora --> to label a partition for users easy understanding
+
+fstab entry
+-----------
+LABEL=/ora		/mountpnt 	ext4	defaults	0 	0
+
+dumpe2fs --> to c the complete parameters of a fs(last mount, logical block size,free inodes,cylinder groups, etc...)
+
+To change the logical block size(default 4kb)
+---------------------------------------------
+umount /mountpnt
+mke2fs -n -b 2048 /dev/sda3 --> "-n" no formatting, "-b" blocksize in bytes
+mount /dev/sda3 /mountpnt
+
+To change the min.free space of a fs (can be changed upto 50%.default 5%)
+-------------------------------------------------------------------------
+df -hT --> check the "size" and "avail" colmn to determine the min.free space
+tune2fs -m 20 /dev/sda3 --> "-m" percentage of min.free in total needed
+df -hT
+
+To check the fs errors and repair(like superblock is corrupt/ IO error cannot touch)
+------------------------------------------------------------------------------------
+umount /dev/sda3
+mke2fs -n /dev/sda3 --> displays the alternate/secondary superblocks of a fs
+e2fsck -b 12345 /dev/sda3 --> "-b" superblock number
+# e2fsck /dev/sda3 --> interactive repair of fs errors
+# e2fsck -f /dev/sda3 --> only display the errors their respective phases
+# e2fsck -p /dev/sda3 --> automatically fix the errors
+
+cat /etc/mtab --> currently and temporarily mounted fss. like removable media/pendrive etc..
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+LVM
+---
+
+[create some partitions with system id as linux lvm (8e)]
+pvcreate /dev/nvme0n1p4 /dev/nvme0n1p5 /dev/nvme0n1p6 --> create 3 physical volumes p4, p5 and p6
+pvremove /dev/nvme0n1p4 ... --> remove the physical volume p4
+pvscan --> scan for all physical volumes and show any errors if any
+pvdisplay --> To c the physical volume info like name,PE size,PE extents etc
+pvs --> Summarize the physical volume( to c the total and free space of pv)
+vgcreate oravg /dev/nvme0n1p4 /dev/nvme0n1p5 --> V.G named oravg is created by adding p4 and p5
+# vgcreate oravg /dev/nvme0n1p4 /dev/nvme0n1p5 -s 8M --> size of PE can be set to 4,8,16 MBs. bydefault 4M
+vgdisplay /dev/oravg --> show the info about oravg V.G
+vgscan /dev/oravg --> to scan the V.G oravg and show errors if any
+vgs /dev/oravg --> to summarize oravg
+vgremove /dev/oravg --> to remove oravg (NOTE : there shouldn't be any L.Vs created from it)
+vgextend oravg /dev/nvme0n1p6 --> to extend the V.G oravg (Note : p6 shoud be a physical volume PV)
+lvcreate -L 200M /dev/oravg -n oravol --> -l takes no. of logical extents -L takes size in MBs by default
+lvs
+lvscan
+lvdisplay
+lvextend -L +200M /dev/oravg/oravol --> without + sign it tries to resize the entire volume, -l takes logical extents
+mkfs.ext4 /dev/oravg/oravol
+mount /dev/oravg/oravol /mountpnt
+fstab entry
+-----------
+/dev/oravg/oravol 	/mountpnt 	ext4 	defaults 	0 	0
+df -hT 
+Note : lvextend alone will not increase the size of the lvm wen mounted. To increase it online(mounted) use below commands after lvextend,
+resize2fs /dev/oravg/oravol --> for ext fs
+xfs_growfs /dev/oravg/oravol --> for xfs fs
+df -hT --> will show the changes in sizes
+
+lvm snapshot
+------------
+lvcreate -s -n oravol_snap -L 500M /dev/oravg/oravol --> -s is snapshot -n name of snapshot -L size of snapshot to be created(min 20 mb, but it can be 30% - 50% of original volume's size)
+
+snapshot recovery
+-----------------
+method 1:
+---------
+umount /dev/oravg/oravol
+lvconvert --merge /dev/oravg/oravol /dev/oravg/oravol_snap --> it will delete the snapshot after merging
+mount /dev/oravg/oravol /mountpnt
+method 2:
+---------
+mount /dev/oravg/oravol_snap /mnt
+tar cvf restore.tar /mnt/*
+# rm -rf /mountpnt/* 
+tar xvf restore.tar /mountpnt
+method 3:
+---------
+umount /dev/oravg/oravol
+dd if=/dev/oravg/oravol_snap of=/dev/oravg/oravol # destination can also be a standard partition
+mount /dev/oravg/oravol /mountpnt
+method 4:
+---------
+mount /dev/oravg/oravol_snap /mnt
+# assumed /dev/oravg/oravol is mounted on /mountpnt
+# rm -rf /mountpnt/*
+cp -R /mnt/* /mountpnt
+
+how to reduce the lvm size
+--------------------------
+umount /mountpnt --> must
+e2fsck -f /dev/oravg/oravol --> -f is must
+# mandatory to follow the order resize2fs is first and lvreduce is next
+resize2fs	/dev/oravg/oravol 1G --> 1G is the amount u want to remove from existing
+lvreduce -L -1G /dev/oravg/oravol --> -1G is the amount of space to be reduced
+mount /dev/oravg/oravol /mountpnt 
+
+how to reduce the vgsize
+------------------------
+pvs | grep oravg --> will show me what PEs are in which vg. check the Psize and Pfree. if they both are same then u can remove those PEs
+# say p6 is unused
+vgreduce oravg /dev/nvme0n1p6
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+Stratis(New feature only in RHEL8)
+---------------------------------
+stratis pool create orap /dev/nvme0n1p6 --> just like volume group, it is called pool in stratis. its name is "orap" in this case
+stratis pool list --> just like vgs, to list all the pools
+stratis pool rename orap orapoo --> to rename the pool
+stratis pool destroy orap --> like vgremove. but to remove pool there shouldnt be any FSs created out of it
+
+stratis fs create orap orafs1 --> like lvcreate. Here we dont format after creating file system. by default it is formatted with xfs on creation
+# stratis filesystem create orap orafs1 
+stratis fs list --> like lvs.Here it is to list the FSs available
+stratos fs remame orap orafs1 orafoo --> to rename the fs
+stratis fs destroy orap orafs1 --> like lvremove. Here it is to remove the filesystem. (unmount first if mounted)
+
+after creating fs
+-----------------
+1. directly mount the fs on desired folder. No need to format. By default it is formatted on creation with xfs FS.
+2. make the fstab entry for permanent mounting
+3. df -hT is useless in case of stratis for fs size ckecking. instead use "stratis pool/fs list"
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+FS Backup and Restore
+---------------------
+3 ways
+------
+
+method 1:
+---------
+umount /dev/sda3
+# yum install dump rmt -y
+# cat /etc/dumpdates
+dump 0uvf /root/sda3.backup /dev/sda3 --> "0" full backup, "u" updates dumpdates file, "v" verbose, "f" file to store the backup
+# dump 1uvf /root/sda3.backup /dev/sda3 --> backup changes after the previous level (0 - full backup)
+# incremental and differential backup (dump levels 1-9)
+cd /mountpnt --> be in the restore point before restoring
+restore tvf /root/sda3.backup --> list table of contents of backup file
+restore rvf /root/sda3.backup --> restore the full contents
+restore ivf /root/sda3.backup --> interactive restoration with desired files and directories
+# ls 
+# add file1 file4 file3
+# extract 
+# 1
+# y
+# quit
+
+method 2:
+---------
+[this is used to copy contents from disk to disk]
+umount /dev/sda3 /dec/sda4 --> must be unmounted
+dd if=/dev/sda3 of=/dev/sda4 --> sda4 is a fresh disk 
+Note : this process doesn't need a disk formatting. while copying the contents byte-to-byte format, it automatically formats destination disk
+
+method 3:
+---------
+tar czvf /root/backupfile.tar.gz /source-dir --> -z is gzip, -c is compress, -v verbose, -f file to write contents to
+tar tzvf /root/backupfile.tar.gz --> -t table of contents
+tar xzvf /root/backupfile.tar.gz /destination --> -x is extract
+to only gzip and just remain as tar ball while extracting
+---------------------------------------------------------
+gunzip /root/backupfile.tar.gz --> will remove .gz 
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+at and cron jobs
+----------------
+at now +2minutes (Note : to save the job, ctrl+d)
+at now +1week
+at now +1month
+at now +1year
+at 5pm tomorrow
+at 8:30am dec24
+at 5pm today
+atrm 1 --> to remove at job with id 1
+atq --> list the at jobs
+at -c 1 --> cat out the job with id 1 (/var/spool/at/a0000....)
+at -r 1 / at -d 1--> alias for atrm command
+at -l --> alias for atq
+cat /var/spool/at/a0000....
+# by default all users can use at command
+vi /etc/at.allow --> whitelist of users to use at jobs (one username per line)
+vi /etc/at.deny --> blacklist for users to use at jobs (one username per line)
+
+cron jobs
+---------
+
+crontab -l --> list the cron jobs
+crontan -e --> edit cron jobs
+crontab -r --> remove all cronjobs 
+vi /etc/crontab --> to run system wide jobs
+cd /etc/cron.d/ --> to store scripts to run regularly by crond
+vi /etc/cron.hourly --> to run hourly scripts
+vi /etc/cron.weekly --> to run weekly scripts
+vi /etc/cron.monthly --> to run monthly scripts
+vi /etc/cron.allow --> whitelist
+vi /etc/cron.deny --> blacklist
+cd /var/spool/cron/
+--------------------------------------------------------------------------------------------------------------------------------------------
+rpm
+----
+rpm -ivh <package-name> # --nodeps for excluding the dependancies
+rpm -e <package-name> # --nodeps for excluding the dependancies
+rpm -qa --> list all the installed packages
+rpm -q <package-name> --> shows whether package is installed or not
+rpm -qi <package-name> --> complete info of package
+rpm -qc <package-name> --> configuration files of the package
+rpm -qd <package-name> --> documentation files of the package
+rpm -qf <package-name> --> files and directories of the package
+rpm -qs <package-name> --> status of the files
+rpm -qf /bin/bash --> query package of the file /bin/bash
+
+yum server
+----------
+Note : (RHEL 6)
+
+mount /dev/cdrom /mnt
+cp /mnt/Packages/* /local-dir -R
+rpm -ivh deltarpm python-deltarpm createrepo
+createrepo -v /local-dir
+vi /etc/yum.repos.d/anyname.repo
+	[anynameofrepowithoutspace]
+	name="Local Yum Repository"
+	enabled=1
+	gpgcheck=0
+	baseurl=file:///local-dir
+yum list
+yum list all --showduplicates
+yum install <package-name> -y
+yum remove <package-name> 
+yum clean all
+yum upgade 
+yum update 
+yum update <package>
+yum autoremove
+yum clean expire-cache
+yum info <package>
+yum search <package-name>
+yum check-update
+
+Note : (RHEL 7/8)
+-----------------
+mount /dev/cdrom /mnt
+mkdir -p /local-dir/AppStream /local-dir/BaseOS
+cp /mnt/AppStream/Packages /local-dir/AppStream/
+cp /mnt/BaseOS/Packages /local-dir/BaseOS
+vi /etc/yum.repos.d/anyname.repo
+	[anynameofrepowithoutspace]
+	name="Local Yum Repository - AppStream"
+	enabled=1
+	gpgcheck=0
+	baseurl=file:///local-dir/AppStream
+vi /etc/yum.repos.d/anyname1.repo
+	[anynameofrepowithoutspace]
+	name="Local Yum Repository - BaseOS"
+	enabled=1
+	gpgcheck=0
+	baseurl=file:///local-dir/BaseOS
+yum list all 
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+Linux Networking
+----------------
+[RHEL 6]
+--------
+hostname --> displays the server name
+hostname server6 --> temporarily sets the server name to be server6(buffer will not be updated)
+vi /etc/sysconfig/network --> for permanently changing the hostname
+	HOSTNAME=server6
+ifconfig --> to c the network interfaces
+ifconfig eth0 192.168.0.60 --> to temporarily change ip. eth0 is interface name [Note : ip must be within subnet range]
+vi /etc/sysconfig/network-scripts/ifcfg-eth0 --> to have a static ip / gateway
+	IPADDR=192.168.0.60
+	ONBOOT=yes
+	GATEWAY=192.168.0.120 # if not present add this line for permanent gateway
+vi /etc/hosts --> DNS records (ip to hostname mappings)
+	192.168.0.60	server6
+ping server6
+netstat -r --> to c the routing table (route -n)
+route add default gw 192.168.0.120 --> temporarily add gateway addr
+service network restart
+setup - text based utility to add/modify/delete network (nmtui in rhel 8)
+ifconfig eth0:1 192.168.0.61 --> additional ip for eth0 interface (can be used for web servers by adding /etc/hosts file entry like  192.168.0.61 	abc.example.com) similarly eth0:2 ...
+[RHEL 8]
+--------
+vi /etc/hostname --> to set the hostname (hostnamectl set-hostname server8)
+	server8
+nmtui - just like setup in RHEL 6 (nmcli con show [interface])
+systemctl restart NetworkManager
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+File Sharing / internal Networking
+----------------------------------
+1: Telnet
+2: SSH
+3: FTP
+4: NFS
+5: samba
+
+1: Telnet(Terminal Emulator)
+----------------------------
+To login from one computer to another computer
+
+packages needed : xinetd,telnet-server,telnet(client package).
+daemons : xinetd,in.telnetd
+port : 23
+configuration file : /etc/xinetd.d/telnet
+
+rpm -ivh xinetd telnet-server
+service iptables stop # systemctl stop firewalld
+service xinetd start # systemctl start xinetd
+chkconfig xinetd on # systemctl enable xinetd
+chkconfig --list telnet # systemctl status xinetd
+@client
+-------
+telnet server-ip
+
+2.SSH (Secure SHell)
+--------------------
+rpm -ivh ssh-server
+# systemctl enable sshd or chkconfig sshd on
+service sshd start # systemctl start sshd
+passwordless auth
+-----------------
+ssh-keygen --> to create a fresh public and private key in ~/.ssh/
+scp ~/.ssh/id_rsa.pub serverip:/user-home/.ssh/authorized_keys
+ssh user@serverip
+ssh serverip command-for-server # ssh 192.168.0.80 mkdir /remote
+vi /etc/sshd_config --> configuration of sshd on server
+
+3.FTP (File Transfer Protocol)
+------------------------------
+port : 20 - data channel
+	   21 - command/control channel
+packages : vsftpd
+configuration file - /etc/vsftpd/vsftpd.conf
+daemon : vsftpd
+types of users : Anonymous(anyone on internet),Real users(local users at server end)
+
+Note : By default anonymous ftp logins are allowed in rhel 6. edit if necessary in /etc/vsftpd/vsftpd.conf
+[Anonymous users can only access /var/ftp/pub in readonly mode]
+
+server
+------
+yum install vsftpd
+mkdir /ftp-share
+touch /ftp-share/{aa,bb,cc}
+cd /ftp-share --> mandatory to enable sebools on this folder
+service vsftpd start # systemctl start vsftpd 
+service iptables stop # systemctl stop firewalld
+getsebool -a | grep ftp --> to list all ftp Security Enhanced Linux Booleans (sebool)
+setsebool -P allow_ftpd_full_access=on --> in rhel8 it may be slightly different
+setsebool -P ftp_home_dir=on
+enable or disable firewalls
+---------------------------
+# systemctl stop firewalld --> to stop firewalls
+firewall-cmd --zone=home --add-service=ftp --permanent
+firewall-cmd --reload
+firewall-cmd --list-all
+
+@client - Real Users
+--------------------
+yum install ftp
+ftp serverip
+	ftpuser_at_server
+	ftpuser_pass
+	ftp > !pwd --> local/client system pwd
+	ftp > l cd Downloads --> local/client cd Downloads
+	ftp > !ls --> local/client ls
+	ftp > get filename --> to download filename from server
+	ftp > mget * --> interactive download of all files in current dir
+	ftp > put filename --> to upload file to server
+	ftp > mput * --> to interactively upload all files from current dir
+	ftp > prompt --> this will turnoff interactive mode and allows to upload/download files at a time (ex : mget *) 
+	ftp > bye --> to exit 
+
+@client - Anonymous Users
+-------------------------
+username : anonymous
+pass : [No-password]
+
+To allow or deny root/regular users via ftp
+-------------------------------------------
+vi /etc/vsftpd/ftpusers --> to deny list of users
+vi /etc/vsftpd/user_list --> also to deny list of users
+systemctl restart vsftpd
+
+4: NFS - Network File System
+----------------------------
+packages : nfs-utils
+daemons	 : mountd,nfsd,portmap,statd(for crash recovery [till nfs3]),lockd(to manage file lockings[till nfs3]),idmapd(in nfs4)
+yum install nfs-utils -y
+mkdir /nfs-share
+systemctl start nfs-server # [chkconfig	nfs on ] or [systemctl enable nfs-server]
+firewall-cmd --zone=public --add-service={nfs,nfs3,mountd,rpc-bind} --permanent
+firewall-cmd --reload
+vi /etc/exports --> to permanently share directories
+	/nfs-share 	*(ro,sync,no_root_squash)
+	# /nfs-share 	192.168.0(rw,sync,no_root_squash) --> alternatively 192.168.0.0/24 is also valid
+	# /nfs-share	192.168.0.120(rw,sync,no_root_squash)
+	# /nfs-share	*.example.com(rw,sync,no_root_squash)
+showmount -e --> to list the nfs shares on server side
+exportfs -var --> a is all shares v is verbose r is re-export all shares by synchronyzing /etc/exports and /etc/exports.d with /var/lib/nfs/etab
+exportfs -ua --> to unshare all
+exportfs -u *:/nfs-share --> to specifically unshare a share. in this case only /nfs-share
+showmount -e
+To share the folders temporarily
+--------------------------------
+exportfs -v 192.168.0:/tmp -o rw,no_root_squash,sync --> without -o it reads the default share options
+@client
+-------
+showmount -e server-ip --> to list the nfs shares from server-ip in client side
+mkdir /local-nfs
+mount -t nfs -o vers=3 server-ip:/nfs-share /local-nfs
+mount -t nfs server-ip:/nfs-share /local-nfs
+df -hT --> to c all the mounted fss
+cd /var/lib/nfs/ --> nfs related files
+cat /var/lib/nfs/etab --> currently shared nfs shares along with share options are listed in this file
+# this file is used by kernal on startup for sharing (if nfs is enabled)
+
+5: Samba server(CIFS) - SMB protocol(Server Message Blocks)
+-----------------------------------------------------
+ports - 139 (smb protocols ran on top of netbios within a network - an older network layer )
+		445 (windows 2000 onwards smb ran on top of tcp/ip stack and could run remotly)
+daemons - smbd(file and printer sharing),nmbd(netbios naming,browsing support),winbindd(allows ADS users to communicate b/w linux sys)
+packages - samba,samba-client,samba-common
+config file - /etc/samba/smb.conf
+
+yum install samba
+mkdir /smb-share
+vi /etc/samba/smb.conf --> add the below lines at end
+	[WinUsers] # smb share name
+	comment = for windows users # space sensitive
+	path = /smb-share
+	validusers = hari arun --> @group-name will allow that group to access smb
+	public = no
+	writable = yes --> users will be able to modify/upload/download the files in /smb-share
+service smb start # systemctl start smb
+firewall-cmd --zone=public --add-service=samba --permanent
+firewall-cmd --reload
+smbpasswd -a hari --> samba passwd is different from normal linux passwd
+smbpasswd -a arun
+pdbedit -L --> to list the smb users with smbuid's
+getsebool -a | grep samba
+setsebool -P use_samba_home_dirs=on --> may slightly different in rhel 8 
+setsebool -P samba_export_all_rw=on
+testparam --> to test the syntax of smb.conf and secure configuration of samba server
+@client or server side
+----------------------
+smbclient -L //server-ip -N --> list all the users and shares of samba server -N for anonymous users listing
+smbclient //server-ip/WinUsers -U hari --> "help" to list the commands in "smb > " prompt
+Note : we can also mount the samba share like nfs
+mount -t cifs -o username=hari //server-ip/WinUsers /mnt 
+--------------------------------------------------------------------------------------------------------------------------------------------
+Link files - hard/soft links
+----------------------------
+Soft Links:(like windows shortcuts)
+-----------
+soft links can be linked across the file system directories
+soft links use different inode numbers from original files
+soft links won't use external space in the disk(it's size is just the size of the path / is 1byte directory or file-name is 2bytes)
+In soft links if main file is deleted all the links are collapsed
+commands
+--------
+ln -s /original-file /link-filename --> for soft
+Hard links:
+-----------
+hard links can only be linked within the file system directories and while creating must be in the destination directory
+hard links use same inode number as original file
+hard links use external space in the disk
+In hard links if main file is deleted, we can still have the data until the last link
+ln /original-file /link-filename
+--------------------------------------------------------------------------------------------------------------------------------------------
+runlevels
+---------
+[rhel 6]
+1 . MBR - on Power on, system(BIOS) runs hardware diaganostics, detects all the periferal devices, locates bootable device(hard disk).
+		  In hard disk the first 512Bytes is MBR(primary boot loader). Then the system loads primary boot loader into memory.
+4 . GRUB - Then system(BIOS) loads secondary boot loader into memory(also called operating system boot loader. GRUB(Grand Unified Boot) is 			   the secondary boot loader of GNU/linux OS. LILO(Linux Loader) is predecessor of GRUB).
+5 .	KERNAL - System starts kernal. Kernal initializes itself. It loads all the modules. It mounts the / file systems. then it starts the 				 init program(/sbin/init).
+6 . init - init program reads the default runlevel(0-6) and boots into respective runlevel.
+7 . RUNLEVEL - /etc/rc.d/rc*.d/*
+
+what is runlevel ?
+It's a s/w program under which a group of processes and services exist.
+runlevel 0 - graceful shutdown
+runlevel 1 - single user mode
+runlevel 2 - multi-user without networking
+runlevel 3 - multi-user with networking
+runlevel 4 - unused
+runlevel 5 - graphical mode(GUI)
+runlevel 6 - graceful restart
+
+who -r --> to check the current runlevel
+runlevel --> to check the current runlevel/target
+init 0 --> shutdown
+init 1 --> single user mode(specially designed for root user to debug/repair disk errors and so on)
+init 2....
+
+Runcontrol scripts(RC scripts)
+------------------------------
+The scripts are of 2 types
+1. Startup scripts - starts with 'S'
+2. Killing scripts - starts with 'K'
+cd /etc/rc.d/ --> runcontrol scripts of different runlevels are present here. ex. /etc/rc.d/rc3.d/* will have runlevel 3 scripts
+Note : all the scripts in /etc/rc.d/rc?.d/* are certalizedly linked with /etc/init.d/ directory 
+How to permanently stop a service in a specific runlevel ?
+----------------------------------------------------------------
+1. check the runlevel (lets say 3)
+2. cd /etc/rc.d/rc3.d
+3. mv S50bluetooth s50bluetooth --> It is must for a startup script file name to start with 'S'. so on renaming it will not start 			   automatically
+How to run a certain scripts whenever a specific runlevel(say 3) is invoked ?
+-----------------------------------------------------------------------------
+1. cd /etc/init.d
+2. vi createuser
+		useradd john
+3. chmod a+x createuser
+4. cd /etc/rc.d/rc3.d --> to link with runlevel 3
+5. ln -s /etc/init.d/createuser S100createuser --> capital 'S' for link file name is must. followed by service number(not mandatory, but    	convension) follower by taskname/anyfilename
+How to change the default runlevel ?
+------------------------------------
+vi /etc/inittab 
+	# change the last line to runlevel of requirement
+cat /etc/rc.d/rc.sysinit --> It is a system initialization file. It runs one time upon booting
+cat /etc/rc.d/rc.local --> It is for root user to write his own stuff to run on bootup. It runs after running all initialization scripts.
+must change file permission to be executed automatically.
+
+[rhel 7/8]
+same as rhel 6 but only main difference,
+6. systemd - init program is replaced by systemd
+7. targets - instead of runlevels 
+
+systemctl isolate multi-user.target --> init 3 in rhel 6
+systemctl set-default multi-user.target --> to change the default runlevel (/etc/inittab file in rhel6)
+systemctl daemon-reload --> to reload the system configuration.
+cd /etc/systemd/system --> equivalent to /etc/init.d in rhel 6
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+User & Role management
+----------------------
+user quotas
+groups
+passwords
